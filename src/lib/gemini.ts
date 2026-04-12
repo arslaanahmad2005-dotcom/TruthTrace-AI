@@ -1,6 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not defined. Please set it in your environment variables.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 export async function analyzeWithGemini(
   type: "image" | "document" | "payment",
@@ -8,7 +19,8 @@ export async function analyzeWithGemini(
   mimeType: string,
   extraFeatures: any
 ) {
-  const model = "gemini-3-flash-preview";
+  const modelName = "gemini-3-flash-preview";
+  const ai = getAI();
   
   const prompt = `
     You are an expert forensic analyst for TruthTrace AI. 
@@ -46,7 +58,7 @@ export async function analyzeWithGemini(
   `;
 
   const response = await ai.models.generateContent({
-    model,
+    model: modelName,
     contents: [
       {
         parts: [
