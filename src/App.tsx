@@ -133,7 +133,7 @@ export default function App() {
       });
     } catch (err) {
       console.error(err);
-      setError("An error occurred during analysis. Please try again.");
+      setError(err instanceof Error ? err.message : "An error occurred during analysis. Please try again.");
     } finally {
       setIsAnalyzing(false);
     }

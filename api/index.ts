@@ -77,6 +77,7 @@ app.post("/api/analyze/image", upload.single("image"), async (req: any, res) => 
 });
 
 app.post("/api/analyze/document", upload.single("document"), async (req: any, res) => {
+  console.log("Starting document analysis...");
   try {
     if (!req.file) return res.status(400).json({ error: "No document uploaded" });
     
@@ -86,8 +87,12 @@ app.post("/api/analyze/document", upload.single("document"), async (req: any, re
 
     const buffer = req.file.buffer;
     
-    // OCR Analysis
-    const { data: { text, confidence } } = await Tesseract.recognize(buffer, 'eng');
+    // OCR Analysis with explicit worker for better control/caching
+    console.log("Initializing Tesseract worker...");
+    const { data: { text, confidence } } = await Tesseract.recognize(buffer, 'eng', {
+      gzip: false, // Disable gzip to avoid some environment issues
+    });
+    console.log(`OCR complete. Confidence: ${confidence}%`);
 
     // Check for common forgery signs in text
     const suspiciousKeywords = ["sample", "void", "copy", "specimen"];
@@ -104,11 +109,12 @@ app.post("/api/analyze/document", upload.single("document"), async (req: any, re
     });
   } catch (error) {
     console.error("Document analysis error:", error);
-    res.status(500).json({ error: "Failed to analyze document" });
+    res.status(500).json({ error: "Failed to analyze document: " + (error instanceof Error ? error.message : String(error)) });
   }
 });
 
 app.post("/api/analyze/payment", upload.single("payment"), async (req: any, res) => {
+  console.log("Starting payment analysis...");
   try {
     if (!req.file) return res.status(400).json({ error: "No payment proof uploaded" });
     
@@ -117,7 +123,9 @@ app.post("/api/analyze/payment", upload.single("payment"), async (req: any, res)
     }
 
     const buffer = req.file.buffer;
+    console.log("Running OCR on payment proof...");
     const { data: { text } } = await Tesseract.recognize(buffer, 'eng');
+    console.log("OCR complete, running fintech rules...");
 
     // Use the improved fintech analysis logic
     const analysis = analyzeFintech(text);
@@ -131,7 +139,7 @@ app.post("/api/analyze/payment", upload.single("payment"), async (req: any, res)
     });
   } catch (error) {
     console.error("Payment analysis error:", error);
-    res.status(500).json({ error: "Failed to analyze payment proof" });
+    res.status(500).json({ error: "Failed to analyze payment proof: " + (error instanceof Error ? error.message : String(error)) });
   }
 });
 
