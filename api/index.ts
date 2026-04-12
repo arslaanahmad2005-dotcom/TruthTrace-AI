@@ -3,6 +3,7 @@ import path from "path";
 import multer from "multer";
 import Tesseract from "tesseract.js";
 import Jimp from "jimp";
+import serverless from "serverless-http";
 
 import { analyzeFintech } from "../src/lib/fintechAnalysis";
 
@@ -168,7 +169,7 @@ async function startServer() {
     });
   }
 
-  if (!process.env.VERCEL) {
+  if (!process.env.VERCEL && !process.env.NETLIFY) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
@@ -177,4 +178,5 @@ async function startServer() {
 
 startServer();
 
+export const handler = serverless(app);
 export default app;
