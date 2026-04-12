@@ -3,9 +3,9 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import multer from "multer";
 import Tesseract from "tesseract.js";
-import { createCanvas, loadImage } from "canvas";
+import Jimp from "jimp";
 
-import { analyzeFintech } from "./src/lib/fintechAnalysis";
+import { analyzeFintech } from "../src/lib/fintechAnalysis";
 
 const app = express();
 
@@ -42,34 +42,35 @@ async function startServer() {
       }
 
       const buffer = req.file.buffer;
-      const canvas = createCanvas(256, 256);
-      const ctx = canvas.getContext("2d");
       
-      let img;
+      let image;
       try {
-        img = await loadImage(buffer);
+        image = await Jimp.read(buffer);
       } catch (e) {
         return res.status(400).json({ error: "Failed to read image. Please ensure it is a valid PNG or JPG file." });
       }
       
-      ctx.drawImage(img, 0, 0, 256, 256);
+      const resized = image.resize(256, 256);
+      const { width, height } = image.bitmap;
 
       // Simple Frequency Analysis (FFT-like simulation)
       // We analyze pixel variance in small blocks to detect "abnormal" patterns
-      const imageData = ctx.getImageData(0, 0, 256, 256);
-      const data = imageData.data;
       let variance = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      resized.scan(0, 0, resized.bitmap.width, resized.bitmap.height, function(x, y, idx) {
+        const r = this.bitmap.data[idx + 0];
+        const g = this.bitmap.data[idx + 1];
+        const b = this.bitmap.data[idx + 2];
+        const avg = (r + g + b) / 3;
         variance += Math.abs(avg - 128);
-      }
+      });
+      
       const frequencyScore = Math.min(1, variance / (256 * 256 * 64));
 
       res.json({
         success: true,
         features: {
           frequencyScore,
-          dimensions: { width: img.width, height: img.height },
+          dimensions: { width, height },
           mimeType: req.file.mimetype,
         }
       });
@@ -92,8 +93,7 @@ async function startServer() {
       // OCR Analysis
       const { data: { text, confidence } } = await Tesseract.recognize(buffer, 'eng');
 
-      // Check for common forgery signs in text (e.g., inconsistent fonts or alignment would be hard here, 
-      // but we can check for text anomalies)
+      // Check for common forgery signs in text
       const suspiciousKeywords = ["sample", "void", "copy", "specimen"];
       const foundKeywords = suspiciousKeywords.filter(kw => text.toLowerCase().includes(kw));
 
