@@ -83,11 +83,28 @@ export default function App() {
       
       console.log(`Backend response status: ${backendRes.status}`);
       
-      if (!backendRes.ok) throw new Error("Backend analysis failed");
-      
       const contentType = backendRes.headers.get("content-type");
+      if (!backendRes.ok) {
+        let errorMessage = "Backend analysis failed";
+        try {
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await backendRes.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } else {
+            const text = await backendRes.text();
+            console.error("Non-JSON error response:", text);
+            errorMessage = `Server Error (${backendRes.status}): ${text.substring(0, 100)}...`;
+          }
+        } catch (e) {
+          errorMessage = `Server Error (${backendRes.status})`;
+        }
+        throw new Error(errorMessage);
+      }
+      
       if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Server returned an invalid response format (HTML instead of JSON). This usually means the API route was not found.");
+        const text = await backendRes.text();
+        console.error("Invalid response format:", text);
+        throw new Error(`Server returned an invalid response format (${backendRes.status}). Expected JSON but got ${contentType || 'unknown'}.`);
       }
 
       const backendData = await backendRes.json();
