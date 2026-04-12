@@ -162,7 +162,12 @@ app.post("/api/analyze/payment", upload.single("payment"), async (req: any, res)
 
 // Catch-all for unmatched API routes
 app.all("/api/*", (req, res) => {
-  res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
+  res.status(404).json({ 
+    error: "API endpoint not found",
+    method: req.method,
+    path: req.url,
+    suggestion: "Check your API routing configuration"
+  });
 });
 
 // Global error handler

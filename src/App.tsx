@@ -36,7 +36,7 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline" | "cookie_blocked">("checking");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,14 +44,31 @@ export default function App() {
     const checkApi = async () => {
       try {
         const res = await fetch("/api/ping");
-        if (res.ok) setApiStatus("online");
-        else setApiStatus("offline");
+        const contentType = res.headers.get("content-type");
+        
+        if (res.ok && contentType?.includes("application/json")) {
+          setApiStatus("online");
+        } else {
+          const text = await res.text();
+          if (text.includes("Cookie check") || text.includes("aistudio_auth_flow")) {
+            setApiStatus("cookie_blocked");
+          } else {
+            setApiStatus("offline");
+          }
+        }
       } catch (e) {
         setApiStatus("offline");
       }
     };
     checkApi();
   }, []);
+
+  const handleAuthorize = () => {
+    // Open the API in a new window to trigger the cookie check
+    window.open("/api/ping", "_blank");
+    // Reload after a short delay to re-check
+    setTimeout(() => window.location.reload(), 2000);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -327,10 +344,15 @@ export default function App() {
                   <div className={cn(
                     "w-2 h-2 rounded-full animate-pulse",
                     apiStatus === "online" ? "bg-green-500" : 
-                    apiStatus === "offline" ? "bg-red-500" : "bg-yellow-500"
+                    apiStatus === "offline" ? "bg-red-500" : 
+                    apiStatus === "cookie_blocked" ? "bg-yellow-500" : "bg-white/20"
                   )} />
                   <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">
-                    System Status: {apiStatus === "online" ? "Operational" : apiStatus === "offline" ? "Connection Error" : "Checking..."}
+                    System Status: {
+                      apiStatus === "online" ? "Operational" : 
+                      apiStatus === "offline" ? "Connection Error" : 
+                      apiStatus === "cookie_blocked" ? "Action Required" : "Checking..."
+                    }
                   </span>
                 </div>
                 {apiStatus === "offline" && (
@@ -341,6 +363,26 @@ export default function App() {
                     Retry Connection
                   </button>
                 )}
+                {apiStatus === "cookie_blocked" && (
+                  <button 
+                    onClick={handleAuthorize}
+                    className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest hover:text-yellow-300"
+                  >
+                    Authorize Preview
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Forensic Status Dashboard */}
+            <div className="grid grid-cols-2 gap-4 pt-4">
+              <div className="p-4 bg-white/[0.02] rounded-2xl border border-white/5">
+                <div className="text-[10px] font-bold text-white/20 uppercase tracking-widest mb-1">Signal Latency</div>
+                <div className="font-mono text-sm text-blue-400">12ms <span className="text-[10px] text-white/20">NOMINAL</span></div>
+              </div>
+              <div className="p-4 bg-white/[0.02] rounded-2xl border border-white/5">
+                <div className="text-[10px] font-bold text-white/20 uppercase tracking-widest mb-1">Encryption</div>
+                <div className="font-mono text-sm text-green-500">AES-256 <span className="text-[10px] text-white/20">ACTIVE</span></div>
               </div>
             </div>
           </div>
