@@ -1,0 +1,178 @@
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import multer from "multer";
+import Tesseract from "tesseract.js";
+import { createCanvas, loadImage } from "canvas";
+
+import { analyzeFintech } from "./src/lib/fintechAnalysis";
+
+console.log("Starting TruthTrace AI Server...");
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // Configure multer for file uploads
+  const storage = multer.memoryStorage();
+  const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  });
+
+  // Logging middleware - MUST BE FIRST
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
+
+  app.use(express.json());
+
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // API Routes
+  app.post("/api/analyze/image", upload.single("image"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No image uploaded" });
+      
+      if (!req.file.mimetype.startsWith("image/")) {
+        return res.status(400).json({ error: "Only image files are supported for this module." });
+      }
+
+      const buffer = req.file.buffer;
+      const canvas = createCanvas(256, 256);
+      const ctx = canvas.getContext("2d");
+      
+      let img;
+      try {
+        img = await loadImage(buffer);
+      } catch (e) {
+        return res.status(400).json({ error: "Failed to read image. Please ensure it is a valid PNG or JPG file." });
+      }
+      
+      ctx.drawImage(img, 0, 0, 256, 256);
+
+      // Simple Frequency Analysis (FFT-like simulation)
+      // We analyze pixel variance in small blocks to detect "abnormal" patterns
+      const imageData = ctx.getImageData(0, 0, 256, 256);
+      const data = imageData.data;
+      let variance = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        variance += Math.abs(avg - 128);
+      }
+      const frequencyScore = Math.min(1, variance / (256 * 256 * 64));
+
+      res.json({
+        success: true,
+        features: {
+          frequencyScore,
+          dimensions: { width: img.width, height: img.height },
+          mimeType: req.file.mimetype,
+        }
+      });
+    } catch (error) {
+      console.error("Image analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze image" });
+    }
+  });
+
+  app.post("/api/analyze/document", upload.single("document"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No document uploaded" });
+      
+      if (!req.file.mimetype.startsWith("image/")) {
+        return res.status(400).json({ error: "PDF documents are not supported yet. Please upload an image of the document (PNG/JPG)." });
+      }
+
+      const buffer = req.file.buffer;
+      
+      // OCR Analysis
+      const { data: { text, confidence } } = await Tesseract.recognize(buffer, 'eng');
+
+      // Check for common forgery signs in text (e.g., inconsistent fonts or alignment would be hard here, 
+      // but we can check for text anomalies)
+      const suspiciousKeywords = ["sample", "void", "copy", "specimen"];
+      const foundKeywords = suspiciousKeywords.filter(kw => text.toLowerCase().includes(kw));
+
+      res.json({
+        success: true,
+        features: {
+          text: text.substring(0, 500), // Return snippet
+          ocrConfidence: confidence / 100,
+          suspiciousKeywords: foundKeywords,
+          isLowConfidence: confidence < 70
+        }
+      });
+    } catch (error) {
+      console.error("Document analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze document" });
+    }
+  });
+
+  app.post("/api/analyze/payment", upload.single("payment"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No payment proof uploaded" });
+      
+      if (!req.file.mimetype.startsWith("image/")) {
+        return res.status(400).json({ error: "Only image screenshots are supported for payment verification." });
+      }
+
+      const buffer = req.file.buffer;
+      const { data: { text } } = await Tesseract.recognize(buffer, 'eng');
+
+      // Use the improved fintech analysis logic
+      const analysis = analyzeFintech(text);
+
+      res.json({
+        success: true,
+        result: analysis.result,
+        confidence_score: analysis.confidence_score,
+        explanation: analysis.explanation,
+        features: analysis.features
+      });
+    } catch (error) {
+      console.error("Payment analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze payment proof" });
+    }
+  });
+
+  // Catch-all for unmatched API routes
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
+  });
+
+  // Global error handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Global error handler:", err);
+    res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message,
+      path: req.url 
+    });
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

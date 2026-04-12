@@ -1,0 +1,5 @@
+{
+  "name": "TruthTrace AI",
+  "description": "Full-stack AI-powered web application for detecting fake images, documents, and fintech screenshots using ensemble analysis.",
+  "requestFramePermissions": []
+}
