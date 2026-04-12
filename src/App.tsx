@@ -36,8 +36,22 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const checkApi = async () => {
+      try {
+        const res = await fetch("/api/ping");
+        if (res.ok) setApiStatus("online");
+        else setApiStatus("offline");
+      } catch (e) {
+        setApiStatus("offline");
+      }
+    };
+    checkApi();
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -284,28 +298,51 @@ export default function App() {
             </div>
 
             {/* Action Button */}
-            <button
-              disabled={!file || isAnalyzing}
-              onClick={analyze}
-              className={cn(
-                "w-full py-4 rounded-2xl text-lg font-bold transition-all flex items-center justify-center gap-3",
-                !file || isAnalyzing 
-                  ? "bg-white/5 text-white/20 cursor-not-allowed" 
-                  : "bg-white text-black hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_30px_rgba(255,255,255,0.2)]"
-              )}
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  ANALYZING FORENSICS...
-                </>
-              ) : (
-                <>
-                  <Search className="w-6 h-6" />
-                  RUN AUTHENTICITY CHECK
-                </>
-              )}
-            </button>
+            <div className="space-y-4">
+              <button
+                disabled={!file || isAnalyzing || apiStatus === "offline"}
+                onClick={analyze}
+                className={cn(
+                  "w-full py-4 rounded-2xl text-lg font-bold transition-all flex items-center justify-center gap-3",
+                  !file || isAnalyzing || apiStatus === "offline"
+                    ? "bg-white/5 text-white/20 cursor-not-allowed" 
+                    : "bg-white text-black hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                )}
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    RUNNING FORENSIC ENGINES...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-6 h-6" />
+                    RUN AUTHENTICITY CHECK
+                  </>
+                )}
+              </button>
+
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full animate-pulse",
+                    apiStatus === "online" ? "bg-green-500" : 
+                    apiStatus === "offline" ? "bg-red-500" : "bg-yellow-500"
+                  )} />
+                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">
+                    System Status: {apiStatus === "online" ? "Operational" : apiStatus === "offline" ? "Connection Error" : "Checking..."}
+                  </span>
+                </div>
+                {apiStatus === "offline" && (
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="text-[10px] font-bold text-blue-400 uppercase tracking-widest hover:text-blue-300"
+                  >
+                    Retry Connection
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Right Column: Results */}

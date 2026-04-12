@@ -18,13 +18,30 @@ const upload = multer({
 
 // Middleware
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const start = Date.now();
+  console.log(`[${new Date().toISOString()}] START ${req.method} ${req.url}`);
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] END ${req.method} ${req.url} ${res.statusCode} (${duration}ms)`);
+  });
   next();
 });
 
 app.use(express.json());
 
-// Health check
+// Health check / Ping
+app.get("/api/ping", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    env: {
+      vercel: !!process.env.VERCEL,
+      netlify: !!process.env.NETLIFY,
+      nodeEnv: process.env.NODE_ENV
+    }
+  });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
@@ -161,22 +178,23 @@ app.use((err: any, req: any, res: any, next: any) => {
 async function startServer() {
   const PORT = 3000;
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+  // Vite middleware for local development ONLY
+  // On Vercel/Netlify, the frontend is served as static files by the platform
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL && !process.env.NETLIFY) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite middleware loaded for development");
+    } catch (e) {
+      console.error("Failed to load Vite middleware:", e);
+    }
   }
 
+  // Start local server if not in a serverless environment
   if (!process.env.VERCEL && !process.env.NETLIFY) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
