@@ -57,34 +57,43 @@ export async function analyzeWithGemini(
     }
   `;
 
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: [
-      {
-        parts: [
-          { text: prompt },
-          { inlineData: { data: fileData.split(",")[1] || fileData, mimeType } }
-        ]
-      }
-    ],
-    config: {
-      responseMimeType: "application/json"
-    }
-  });
-
-  let text = response.text || "{}";
-  // Remove markdown code blocks if present
-  text = text.replace(/```json\n?|```/g, "").trim();
-  
   try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { inlineData: { data: fileData.split(",")[1] || fileData, mimeType } }
+          ]
+        }
+      ],
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    let text = response.text || "{}";
+    // Remove markdown code blocks if present
+    text = text.replace(/```json\n?|```/g, "").trim();
+    
     return JSON.parse(text);
-  } catch (e) {
-    console.error("Failed to parse Gemini response:", text);
+  } catch (err: any) {
+    console.error("Gemini analysis error:", err);
+    
+    // Handle specific API key errors from Google
+    if (err.message?.includes("API key not valid") || err.message?.includes("400") || err.message?.includes("API_KEY_INVALID")) {
+      throw new Error(
+        "INVALID_API_KEY: The Gemini API key is invalid or missing. " +
+        "Please ensure GEMINI_API_KEY is set in your deployment environment variables (Vercel/Netlify) and REDEPLOY your site."
+      );
+    }
+    
     return {
       verdict: "SUSPICIOUS",
       confidence: 50,
-      explanation: "AI analysis failed to produce a structured result, but the backend signals are available.",
-      anomalies: ["AI Parsing Error"],
+      explanation: "AI analysis failed to produce a result. Technical error: " + (err.message || "Unknown error"),
+      anomalies: ["AI Processing Error"],
       heatmapPoints: []
     };
   }
